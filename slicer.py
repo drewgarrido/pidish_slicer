@@ -23,6 +23,10 @@ the mask.png resolution. \
 
 import numpy as np
 import math
+from PIL import Image, ImageDraw, ImageChops
+import stl
+import math
+import traceback
 
 WIDTH_MM = 102.4
 HEIGHT_MM = 76.8
@@ -46,7 +50,7 @@ def main(args):
 
         if (len(args) == 4):
             if (re.match(".+?\.png", args[3])):
-                mask_path = arg[3]
+                mask_path = args[3]
     else:
         print(usageStr)
         return 0
@@ -84,12 +88,6 @@ def main(args):
 
 
 def slicer(input_path, mask_path):
-    from PIL import Image, ImageDraw
-    import stl
-    import math
-    import traceback
-
-
     try:
         f = open(input_path, "rb")
         identifier = f.read(6)
@@ -136,8 +134,15 @@ def slicer(input_path, mask_path):
     midpoints = []
 
     # center the bottom image in order to find the best position
-    translate_x = (mask.width / 2) - ((max(x_list) + min(x_list)) / 2) * scale
-    translate_y = (mask.height / 2) - ((max(y_list) + min(y_list)) / 2) * scale
+    #translate_x = (mask.width / 2) - ((max(x_list) + min(x_list)) / 2) * scale
+    #translate_y = (mask.height / 2) - ((max(y_list) + min(y_list)) / 2) * scale
+
+    # translate just enough to get the bottom in the top left
+    translate_x = -1 * (min(x_list) * scale)
+    translate_y = -1 * (min(y_list) * scale)
+
+    clip_x = round(max(x_list) * scale + translate_x)
+    clip_y = round(max(y_list) * scale + translate_y)
 
     # Find all line segments and midpoints
     for facet in solid.facets:
@@ -191,20 +196,58 @@ def slicer(input_path, mask_path):
             if (points[-1][0] != points[-1][1]):
                 midpoints.append((mx, my))
 
-
-
     bottom_im = Image.new('RGBA',(mask.width, mask.height), (0,0,0,255))
     bottom_draw = ImageDraw.Draw(bottom_im)
 
     for couple in points:
         bottom_draw.line(couple, fill=(255,255,255,255))
 
-    bottom_im.save('test_outline.png')
-
     for x,y in midpoints:
         floodfill(bottom_im, x, y, (255,255,255,255))
 
-    bottom_im.save('test_fill.png')
+
+    ###########################################################################
+    ##
+    ## Find the best position for the bottom
+    ##
+    ###########################################################################
+
+    print("Finding best location")
+
+    cropped_bottom = bottom_im.crop((0,0,clip_x,clip_y))
+
+    crop_pixels = []
+    for x in range(clip_x):
+        crop_pixels.append([])
+        for y in range(clip_y):
+            crop_pixels[x].append(cropped_bottom.getpixel((x,y))[0]/255.0)
+
+    crop_pixels = np.array(crop_pixels).flatten()
+
+    # Normalize by the number of pixels involved
+    crop_pixels = crop_pixels / np.sum(crop_pixels)
+
+    mask_pixels = []
+    for x in range(mask.width):
+        mask_pixels.append([])
+        for y in range(mask.height):
+            mask_pixels[x].append(mask.getpixel((x,y))[0]/255.0)
+
+    mask_pixels = np.array(mask_pixels)
+
+    best_score = 0
+    best_xy = (0,0)
+
+    for x in range(bottom_im.width - clip_x):
+        for y in range(bottom_im.height - clip_y):
+            accum = mask_pixels[x:x+clip_x, y:y+clip_y].flatten().dot(crop_pixels)
+
+            if (best_score < accum):
+                best_xy = (x,y)
+                best_score = accum
+
+    print(best_xy)
+    print(best_score)
 
     return 0
 
