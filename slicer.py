@@ -203,8 +203,10 @@ def slicer(input_path, mask_path, output_path):
     for couple in points:
         bottom_draw.line(couple, fill=(255,255,255,255))
 
+    im_data = np.array(bottom_im)
     for x,y in midpoints:
-        floodfill(bottom_im, x, y, (255,255,255,255))
+        bottom_im = floodfill(im_data, x, y, (255,255,255,255))
+    bottom_im = Image.fromarray(im_data)
 
 
     ###########################################################################
@@ -330,8 +332,10 @@ def slicer(input_path, mask_path, output_path):
         for couple in points:
             layer_draw.line(couple, fill=(255,255,255,255))
 
+        im_data = np.array(layer_im)
         for x,y in midpoints:
-            floodfill(layer_im, x, y, (255,255,255,255))
+            layer_im = floodfill(im_data, x, y, (0,0,255,255))
+        layer_im = Image.fromarray(im_data)
 
         layer_im.save('./{!s}/layer{:04d}.png'.format(output_path, layer))
 
@@ -339,19 +343,28 @@ def slicer(input_path, mask_path, output_path):
     return 0
 
 
-def floodfill(image, x, y, color):
-    if x < 0 or y < 0 or x >= image.width or y >= image.height or image.getpixel((x, y)) == color:
-        return
+def floodfill(im_data, x, y, color):
+    width = len(im_data[0])
+    height = len(im_data)
+    BLACK = (0,0,0,255)
+
+    check_color = (tuple(im_data[y,x]) != BLACK)
+    im_data[y,x] = (255,0,0,255)
+
+    if x < 0 or y < 0 or x >= width or y >= height or check_color:
+        return im_data
+
     edge = [(x, y)]
-    image.putpixel((x, y), (255,0,0,255))
     while edge:
         newedge = []
         for (x, y) in edge:
             for (s, t) in ((x+1, y), (x-1, y), (x, y+1), (x, y-1)):
-                if s >= 0 and t >= 0 and s < image.width and t < image.height and image.getpixel((s, t)) == (0,0,0,255):
-                    image.putpixel((s, t), color)
+                if s >= 0 and t >= 0 and s < width and t < height and tuple(im_data[t,s]) == BLACK:
+                    im_data[t,s] = color
                     newedge.append((s, t))
         edge = newedge
+
+    return im_data
 
 ###############################################################################
 ##
