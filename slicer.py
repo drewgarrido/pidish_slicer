@@ -81,13 +81,13 @@ def main(args):
         return 0
 
 
-    slicer(input_path, mask_path)
+    slicer(input_path, mask_path, output_path)
 
     return 0
 
 
 
-def slicer(input_path, mask_path):
+def slicer(input_path, mask_path, output_path):
     try:
         f = open(input_path, "rb")
         identifier = f.read(6)
@@ -140,6 +140,7 @@ def slicer(input_path, mask_path):
     # translate just enough to get the bottom in the top left
     translate_x = -1 * (min(x_list) * scale)
     translate_y = -1 * (min(y_list) * scale)
+    translate_z = -1 * (min(z_list) * scale)
 
     clip_x = round(max(x_list) * scale + translate_x)
     clip_y = round(max(y_list) * scale + translate_y)
@@ -248,6 +249,92 @@ def slicer(input_path, mask_path):
 
     print(best_xy)
     print(best_score)
+
+    ###########################################################################
+    ##
+    #   Print rest of object
+    ##
+    ###########################################################################
+
+    # Create transformation matrix
+    angle = 0   # TODO: Find the best angle the bottom should be placed in
+    normal_transform = np.array([[math.cos(angle),  math.sin(angle), 0],
+                                 [-math.sin(angle), math.cos(angle), 0],
+                                 [0,                0,               1]])
+
+    transform = np.array([[scale * math.cos(angle),  scale * math.sin(angle), 0,     translate_x + best_xy[0]],
+                          [scale * -math.sin(angle), scale * math.cos(angle), 0,     translate_y + best_xy[1]],
+                          [0,                        0,                       scale, translate_z],
+                          [0,                        0,                       0,     0]])
+
+    for facet in solid.facets:
+        facet.vertices = np.dot(transform, np.concatenate((np.array(facet.vertices),np.ones((3,1))),axis=1).transpose())[:3, :].transpose()
+        facet.normal = np.dot(normal_transform, np.array(facet.normal))
+
+
+    # Find all line segments and midpoints
+    layers = round(object_height * scale)
+    for layer in range(layers):
+
+        z_plane = layer + 0.5
+
+        points = []
+        midpoints = []
+
+        for facet in solid.facets:
+            below = []
+            above = []
+            for vertex in facet.vertices:
+                if (vertex[2] < z_plane):
+                    below.append(vertex)
+                else:
+                    above.append(vertex)
+
+            if (len(below) == 1):
+                scale0 = (z_plane - below[0][2]) / (above[0][2] - below[0][2])
+                scale1 = (z_plane - below[0][2]) / (above[1][2] - below[0][2])
+
+                x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
+                y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
+                x1 = (above[1][0] - below[0][0]) * scale1 + below[0][0]
+                y1 = (above[1][1] - below[0][1]) * scale1 + below[0][1]
+
+                mx = int(round((x0 + x1) / 2 - facet.normal[0]))
+                my = int(round((y0 + y1) / 2 - facet.normal[1]))
+
+                points.append(((round(x0),round(y0)),(round(x1),round(y1))))
+
+                if (points[-1][0] != points[-1][1]):
+                    midpoints.append((mx, my))
+
+            elif (len(above) == 1):
+                scale0 = (z_plane - below[0][2]) / (above[0][2] - below[0][2])
+                scale1 = (z_plane - below[1][2]) / (above[0][2] - below[1][2])
+
+                x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
+                y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
+                x1 = (above[0][0] - below[1][0]) * scale1 + below[1][0]
+                y1 = (above[0][1] - below[1][1]) * scale1 + below[1][1]
+
+                mx = int(round((x0 + x1) / 2 - facet.normal[0]))
+                my = int(round((y0 + y1) / 2 - facet.normal[1]))
+
+                points.append(((round(x0),round(y0)),(round(x1),round(y1))))
+
+                if (points[-1][0] != points[-1][1]):
+                    midpoints.append((mx, my))
+
+        layer_im = Image.new('RGBA',(mask.width, mask.height), (0,0,0,255))
+        layer_draw = ImageDraw.Draw(layer_im)
+
+        for couple in points:
+            layer_draw.line(couple, fill=(255,255,255,255))
+
+        for x,y in midpoints:
+            floodfill(layer_im, x, y, (255,255,255,255))
+
+        layer_im.save('./{!s}/layer{:04d}.png'.format(output_path, layer))
+
 
     return 0
 
