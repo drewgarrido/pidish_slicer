@@ -13,19 +13,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import argparse
+# Python 3 script
+# Standard libraries
+import argparse, copy, math, os.path, re, shutil, sys, time
+
+# numpy library
 import numpy as np
-import math
-from PIL import Image, ImageDraw, ImageChops
+
+# PIL/Pillow library
+from PIL import Image
+
+# numpy-stl library
 from stl import mesh
-import traceback
-import copy
-import re, os.path, sys, shutil, time
 
 def main():
 
     parser = argparse.ArgumentParser(
-        description='Slices a .stl file into .png images.')
+        description='Python 3.5 script that slices an .stl file into .png \
+        images. Dependent on numpy, numpy-stl, and pillow')
     parser.add_argument('-i', '--input-file', required=True,
         help='Input .stl file using mm units')
     parser.add_argument('-o', '--output-dir', default=None,
@@ -38,7 +43,7 @@ def main():
         unspecified, mask.png will be sought in the current working             \
         directory.')
 
-    parser.add_argument('-s', '--scale', default=10,
+    parser.add_argument('-s', '--scale', default='10',
         help='Pixels per unit in the .stl file. For instance, a value of 10 \
         will provide 0.1 mm resolution if the .stl file uses mm for units. \
         If unspecified, resolution will be set to 10.')
