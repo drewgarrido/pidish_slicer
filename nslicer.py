@@ -20,24 +20,28 @@ from PIL import Image, ImageDraw, ImageChops
 from stl import mesh
 import traceback
 import copy
-import re, os.path, sys, shutil
-
-WIDTH_MM = 102.4
-HEIGHT_MM = 76.8
-
-Z_RESOLUTION_MM = 0.1
+import re, os.path, sys, shutil, time
 
 def main():
 
     parser = argparse.ArgumentParser(
         description='Slices a .stl file into .png images.')
     parser.add_argument('-i', '--input-file', required=True,
-        help='Input .stl file')
+        help='Input .stl file using mm units')
     parser.add_argument('-o', '--output-dir', default=None,
-        help='If unspecified, the name of the input will be used as a new directory')
+        help='If unspecified, the name of the input will be used as a new \
+        directory')
     parser.add_argument('-m', '--mask-file', default='mask.png',
-        help='Mask file with black as areas to avoid. Can be grayscale to specify preferred regions \
-        If unspecified, mask.png will be sought in the current working directory.')
+        help='Mask image of the lift platform with black as areas to avoid. Can \
+        be RGBA grayscale to specify preferred regions. The resolution of       \
+        the mask is used to determine the slice resolution. If                  \
+        unspecified, mask.png will be sought in the current working             \
+        directory.')
+
+    parser.add_argument('-r', '--resolution', default=10,
+        help='Pixels per unit in the .stl file. For instance, a value of 10 \
+        will provide 0.1 mm resolution if the .stl file uses mm for units. \
+        If unspecified, resolution will be set to 10.')
 
     args = parser.parse_args()
 
@@ -59,6 +63,7 @@ def main():
 
     if (os.path.isdir(args.output_dir)):
         shutil.rmtree(args.output_dir)
+        time.sleep(1.0)
 
     os.mkdir(args.output_dir)
 
@@ -79,12 +84,12 @@ def main():
     # Files successfully opened! Now the the 3d math can begin.
     ###########################################################################
 
-    # Note that we also mirror about the x-axis since CAD has lower-left
+    # Mirror about the xz-plane since CAD has lower-left
     # as origin, but graphics put top-left as origin
     scene = mirror_scene(scene,(1,-1,1))
 
     # Scale the vertices to the actual pixels
-    scale = mask.width / WIDTH_MM
+    scale = args.resolution
 
     # Find the dimensions of the scene without rotation
     x_min = min(scene.points[:,0:9:3].flatten())
