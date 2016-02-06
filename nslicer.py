@@ -13,98 +13,75 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-usageStr = """\
-Usage:      python slicer.py input.stl output_dir [mask.png]
-
-For the mask.png, white pixels denote supported areas, and black pixels \
-denote holes to avoid. The pixel resolution of the slices are dependent on \
-the mask.png resolution. \
-"""
-
+import argparse
 import numpy as np
 import math
 from PIL import Image, ImageDraw, ImageChops
 from stl import mesh
 import traceback
 import copy
+import re, os.path, sys, shutil
 
 WIDTH_MM = 102.4
 HEIGHT_MM = 76.8
 
 Z_RESOLUTION_MM = 0.1
 
-def main(args):
-    import re, os.path
+def main():
 
-    input_path = ""
-    mask_path = ""
-    output_path = ""
+    parser = argparse.ArgumentParser(
+        description='Slices a .stl file into .png images.')
+    parser.add_argument('-i', '--input-file', required=True,
+        help='Input .stl file')
+    parser.add_argument('-o', '--output-dir', default=None,
+        help='If unspecified, the name of the input will be used as a new directory')
+    parser.add_argument('-m', '--mask-file', default='mask.png',
+        help='Mask file with black as areas to avoid. Can be grayscale to specify preferred regions \
+        If unspecified, mask.png will be sought in the current working directory.')
 
-    # Enough arguments?
-    if (len(args) in [3,4]):
+    args = parser.parse_args()
 
-        if (re.match(".+?\.stl", args[1])):
-            input_path = args[1]
-
-        output_path = args[2]
-
-        if (len(args) == 4):
-            if (re.match(".+?\.png", args[3])):
-                mask_path = args[3]
-    else:
-        print(usageStr)
-        return 0
-
-    # Test for missing arguments and files
-    if (input_path == ""):
+    if (not re.match(".+?\.stl", args.input_file)):
         print("Please specify an input .stl file.")
-        print(usageStr)
-        return 0
-    elif (not os.path.isfile(input_path)):
-        print(input_path + " does not exist!")
         return 0
 
-    if (not os.path.isdir(output_path)):
-        print("Please specify a valid output directory.")
-        print(usageStr)
+    if (not os.path.isfile(args.input_file)):
+        print(args.input_file + " does not exist!")
         return 0
 
-    if (mask_path == ""):
-        if (os.path.isfile('mask.png')):
-            mask_path = "mask.png"
-        else:
-            print("Please specify a mask.png path or place a mask.png file into the script directory.")
-            print("White areas are supported areas, black are holes.")
-            return 0
-    elif (not os.path.isfile(mask_path)):
-        print(mask_path + " does not exist!")
+    if (not os.path.isfile(args.mask_file)):
+        print(args.mask_file + " does not exist!")
         return 0
 
+    # Fix default for output
+    if (args.output_dir is None):
+        args.output_dir = args.input_file[:-4]
 
-    slicer(input_path, mask_path, output_path)
+    if (os.path.isdir(args.output_dir)):
+        shutil.rmtree(args.output_dir)
 
-    return 0
+    os.mkdir(args.output_dir)
 
-
-
-def slicer(input_path, mask_path, output_path):
-
+    # Open the input files
     try:
-        scene = mesh.Mesh.from_file(input_path)
+        scene = mesh.Mesh.from_file(args.input_file)
     except:
         print("Unable to read the .stl file!")
         return 0
 
     try:
-        mask = Image.open(mask_path)
+        mask = Image.open(args.mask_file)
     except:
         print("Unable to read the mask.png file!")
         return 0
 
+    ###########################################################################
+    # Files successfully opened! Now the the 3d math can begin.
+    ###########################################################################
+
     # Note that we also mirror about the x-axis since CAD has lower-left
     # as origin, but graphics put top-left as origin
     scene = mirror_scene(scene,(1,-1,1))
-
 
     # Scale the vertices to the actual pixels
     scale = mask.width / WIDTH_MM
@@ -126,24 +103,19 @@ def slicer(input_path, mask_path, output_path):
     print("Generating bottom image...")
     bottom_image_data = get_slice_image_data(bottom_transform, 0.5, mask.width, mask.height)
 
-    save_image_data(bottom_image_data, "bottom.png")
-
     print("Finding best location...")
 
     # Crop the bottom image to the object size
-    cropped_bottom = bottom_image_data[:clip_y,:clip_x].flatten()
-
-    # Normalize by the number of pixels involved
-    cropped_bottom = cropped_bottom / np.sum(cropped_bottom)
+    cropped_bottom = np.uint32(bottom_image_data[:clip_y,:clip_x].flatten())
 
     # Get the red channel of the mask as the gray value and normalize
-    mask_pixels = np.array(mask)[:,:,0] / 255.0
+    mask_pixels = np.uint32(np.array(mask)[:,:,0])
 
     best_score = 0
     best_xy = (0,0)
 
-    for x in range(mask.width - clip_x):
-        for y in range(mask.height - clip_y):
+    for x in range(0, mask.width - clip_x, 4):
+        for y in range(0, mask.height - clip_y, 4):
             accum = mask_pixels[y:y+clip_y, x:x+clip_x].flatten().dot(cropped_bottom)
 
             if (best_score < accum):
@@ -161,7 +133,7 @@ def slicer(input_path, mask_path, output_path):
 
     for layer_z in range(num_layers):
         layer_image_data = get_slice_image_data(best_scene, layer_z + 0.5, mask.width, mask.height)
-        save_image_data(layer_image_data, '{!s}/layer{:04d}.png'.format(output_path, layer_z))
+        save_image_data(layer_image_data, '{!s}/layer{:04d}.png'.format(args.output_dir, layer_z))
 
 
 ###############################################################################
@@ -308,5 +280,4 @@ def get_slice_image_data(scene, z_height, width, height):
 
 
 if __name__ == '__main__':
-    import sys
-    sys.exit(main(sys.argv))
+    sys.exit(main())
