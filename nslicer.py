@@ -57,6 +57,10 @@ def main():
         print(args.mask_file + " does not exist!")
         return 0
 
+    if (not re.match("^([0-9]+|[0-9]+\.[0-9]*)$", args.scale)):
+        print(args.scale + " is not a valid float value for scale!")
+        return 0
+
     # Fix default for output
     if (args.output_dir is None):
         args.output_dir = args.input_file[:-4]
@@ -89,7 +93,7 @@ def main():
     scene = mirror_scene(scene,(1,-1,1))
 
     # Scale the vertices to the actual pixels
-    scale = args.scale
+    scale = float(args.scale)
 
     # Find the dimensions of the scene without rotation
     x_min = min(scene.points[:,0:9:3].flatten())
