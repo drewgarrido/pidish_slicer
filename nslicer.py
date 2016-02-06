@@ -38,7 +38,7 @@ def main():
         unspecified, mask.png will be sought in the current working             \
         directory.')
 
-    parser.add_argument('-r', '--resolution', default=10,
+    parser.add_argument('-s', '--scale', default=10,
         help='Pixels per unit in the .stl file. For instance, a value of 10 \
         will provide 0.1 mm resolution if the .stl file uses mm for units. \
         If unspecified, resolution will be set to 10.')
@@ -89,7 +89,7 @@ def main():
     scene = mirror_scene(scene,(1,-1,1))
 
     # Scale the vertices to the actual pixels
-    scale = args.resolution
+    scale = args.scale
 
     # Find the dimensions of the scene without rotation
     x_min = min(scene.points[:,0:9:3].flatten())
