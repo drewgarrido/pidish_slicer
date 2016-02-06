@@ -236,7 +236,6 @@ def transform_scene(scene, scale, angle, translate):
 
     return tmp_scene
 
-
 ###############################################################################
 ##
 #   Produces a slice image at the z-height
@@ -251,50 +250,51 @@ def get_slice_image_data(scene, z_height, width, height):
     image = np.array([[0.0]*width]*height)
 
     # Remove facets that are too low in z
-    facet_points = scene.points[scene.points[:,2:9:3].min(axis=1)<z_height]
+    facet_points = scene.points[scene.points[:,2:9:3].min(axis=1)<=z_height]
 
     # Remove facets that are too high in z
     facet_points = facet_points[facet_points[:,2:9:3].max(axis=1)>z_height]
 
-    for row in range(height):
-        x_list = []
-        for facet in facet_points:
-            below = []
-            above = []
-            for vertex in [facet[0:3], facet[3:6],facet[6:9]]:
-                if (vertex[2] < z_height):
-                    below.append(vertex)
-                else:
-                    above.append(vertex)
+    x_list = [[] for _ in range(height)]
 
-            if (len(below) == 1):
-                scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
-                scale1 = (z_height - below[0][2]) / (above[1][2] - below[0][2])
-
-                x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
-                y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
-                x1 = (above[1][0] - below[0][0]) * scale1 + below[0][0]
-                y1 = (above[1][1] - below[0][1]) * scale1 + below[0][1]
-
-                if ((y0 <= row and row < y1) or (y1 <= row and row < y0)):
-                    x = ((row - y0) / (y1 - y0)) * (x1 - x0) + x0
-                    x_list.append(int(round(x)))
-
+    for facet in facet_points:
+        above = []
+        below = []
+        for vertex in [facet[0:3], facet[3:6],facet[6:9]]:
+            if (vertex[2] <= z_height):
+                below.append(vertex)
             else:
-                scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
-                scale1 = (z_height - below[1][2]) / (above[0][2] - below[1][2])
+                above.append(vertex)
 
-                x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
-                y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
-                x1 = (above[0][0] - below[1][0]) * scale1 + below[1][0]
-                y1 = (above[0][1] - below[1][1]) * scale1 + below[1][1]
+        if (len(below) == 1):
+            scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
+            scale1 = (z_height - below[0][2]) / (above[1][2] - below[0][2])
 
-                if ((y0 <= row and row < y1) or (y1 <= row and row < y0)):
-                    x = ((row - y0) / (y1 - y0)) * (x1 - x0) + x0
-                    x_list.append(int(round(x)))
+            x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
+            y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
+            x1 = (above[1][0] - below[0][0]) * scale1 + below[0][0]
+            y1 = (above[1][1] - below[0][1]) * scale1 + below[0][1]
 
+        else:
+            scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
+            scale1 = (z_height - below[1][2]) / (above[0][2] - below[1][2])
+
+            x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
+            y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
+            x1 = (above[0][0] - below[1][0]) * scale1 + below[1][0]
+            y1 = (above[0][1] - below[1][1]) * scale1 + below[1][1]
+
+        y_min = int(min(y0, y1))+1
+        y_max = int(max(y0, y1))+1
+        for row in range(y_min,y_max):
+            x = ((row - y0) / (y1 - y0)) * (x1 - x0) + x0
+            x_list[row].append(int(round(x)))
+
+
+
+    for row in range(height):
         # Pair the list elements [(idx0, idx1), (idx2,idx3)...]
-        x_pairs = zip(*[iter(sorted(x_list))]*2)
+        x_pairs = zip(*[iter(sorted(x_list[row]))]*2)
 
         # Draw lines between the pairs
         #~ for start, end in x_pairs:
@@ -305,7 +305,6 @@ def get_slice_image_data(scene, z_height, width, height):
             image[row][start:end] = [1.0]*(end - start)
 
     return image
-
 
 
 if __name__ == '__main__':
