@@ -100,47 +100,56 @@ def main():
     # Scale the vertices to the actual pixels
     scale = float(args.scale)
 
-    # Find the dimensions of the scene without rotation
-    x_min = min(scene.points[:,0:9:3].flatten())
-    x_max = max(scene.points[:,0:9:3].flatten())
-    y_min = min(scene.points[:,1:9:3].flatten())
-    y_max = max(scene.points[:,1:9:3].flatten())
+    print("Finding best location...")
+
     z_min = min(scene.points[:,2:9:3].flatten())
     z_max = max(scene.points[:,2:9:3].flatten())
 
-    print("Translating object...")
-    bottom_transform = transform_scene(scene, scale, 0, (-x_min*scale, -y_min*scale, -z_min*scale))
-
-    clip_x = int(round((x_max - x_min) * scale))
-    clip_y = int(round((y_max - y_min) * scale))
-
-    print("Generating bottom image...")
-    bottom_image_data = get_slice_image_data(bottom_transform, 0.5, mask.width, mask.height)
-
-    print("Finding best location...")
-
-    # Crop the bottom image to the object size
-    cropped_bottom = np.uint32(bottom_image_data[:clip_y,:clip_x].flatten())
-
-    # Get the red channel of the mask as the gray value and normalize
-    mask_pixels = np.uint32(np.array(mask)[:,:,0])
-
     best_score = 0
     best_xy = (0,0)
+    best_angle = 0.0
+    best_min_xy = (0,0)
 
-    for x in range(0, mask.width - clip_x, 4):
-        for y in range(0, mask.height - clip_y, 4):
-            accum = mask_pixels[y:y+clip_y, x:x+clip_x].flatten().dot(cropped_bottom)
+    for angle in (0.0, math.radians(45)):
 
-            if (best_score < accum):
-                best_xy = (x,y)
-                best_score = accum
+        bottom_transform = transform_scene(scene, 1, angle, (0,0,0))
 
-    print(best_xy, best_score)
+        # Find the dimensions of the rotated scene
+        x_min = min(bottom_transform.points[:,0:9:3].flatten())
+        x_max = max(bottom_transform.points[:,0:9:3].flatten())
+        y_min = min(bottom_transform.points[:,1:9:3].flatten())
+        y_max = max(bottom_transform.points[:,1:9:3].flatten())
+
+        bottom_transform = transform_scene(bottom_transform, scale, 0, (-x_min*scale, -y_min*scale, -z_min*scale))
+
+        clip_x = int(round((x_max - x_min) * scale))
+        clip_y = int(round((y_max - y_min) * scale))
+
+        bottom_image_data = get_slice_image_data(bottom_transform, 0.5, mask.width, mask.height)
+
+        # Crop the bottom image to the object size
+        cropped_bottom = np.uint32(bottom_image_data[:clip_y,:clip_x].flatten())
+
+        # Get the red channel of the mask as the gray value and normalize
+        mask_pixels = np.uint32(np.array(mask)[:,:,0])
+
+
+        for x in range(0, mask.width - clip_x, 4):
+            for y in range(0, mask.height - clip_y, 4):
+                accum = mask_pixels[y:y+clip_y, x:x+clip_x].flatten().dot(cropped_bottom)
+
+                if (best_score < accum):
+                    best_xy = (x,y)
+                    best_score = accum
+                    best_angle = angle
+                    best_min_xy = (x_min, y_min)
+
+    print(best_xy, math.degrees(best_angle), best_score)
 
     print("Moving object to best position...")
 
-    best_scene = transform_scene(scene, scale, 0, (-x_min*scale + best_xy[0], -y_min*scale + best_xy[1], -z_min*scale))
+    best_scene = transform_scene(scene, 1, best_angle, (0,0,0))
+    best_scene = transform_scene(best_scene, scale, 0, (-best_min_xy[0]*scale + best_xy[0], -best_min_xy[1]*scale + best_xy[1], -z_min*scale))
 
     print("Generating layers...")
     num_layers = int(round((z_max - z_min) * scale))
@@ -199,7 +208,7 @@ def mirror_scene(scene, mirror):
 
 ###############################################################################
 ##
-#   Scales, rotates, and translates the object per the parameters
+#   Scales, rotates, and then translates the object per the parameters
 #
 #   @param scene        stl scene
 #   @param scale        amount to scale the scene
@@ -259,7 +268,7 @@ def get_slice_image_data(scene, z_height, width, height):
             else:
                 above.append(vertex)
 
-        # Find the x and y components of the triangle/facet
+        # Find the x and y components of the triangle/facet edges
         if (len(below) == 1):
             scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
             scale1 = (z_height - below[0][2]) / (above[1][2] - below[0][2])
