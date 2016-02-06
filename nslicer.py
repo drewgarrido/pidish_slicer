@@ -245,7 +245,7 @@ def get_slice_image_data(scene, z_height, width, height):
     # Remove facets that are too high in z
     facet_points = facet_points[facet_points[:,2:9:3].max(axis=1)>z_height]
 
-    # Each list in x_list contains x location where a facet is passed-through
+    # Each list in x_list contains x-locations where a facet is passed-through
     x_list = [[] for _ in range(height)]
 
     for facet in facet_points:
