@@ -86,7 +86,7 @@ def main():
     try:
         mask = Image.open(args.mask_file)
     except:
-        print("Unable to read the mask.png file!")
+        print("Unable to read the mask file!")
         return 0
 
     ###########################################################################
@@ -224,7 +224,11 @@ def transform_scene(scene, scale, angle, translate):
 
 ###############################################################################
 ##
-#   Produces a slice image at the z-height
+#   Produces a slice image at the z-height. Determines the relevant facets
+#   for the layer. For every row of pixels, a ray is shot in the x-direction
+#   and finds x-coordinates where the ray passes through facets/triangles.
+#   After passing through an odd number of facets, the ray is in the solid
+#   portion of the object, and outside after passing an even number of facets.
 #
 #   @param scene        stl scene
 #   @param z_height     z height of the layer
@@ -241,17 +245,21 @@ def get_slice_image_data(scene, z_height, width, height):
     # Remove facets that are too high in z
     facet_points = facet_points[facet_points[:,2:9:3].max(axis=1)>z_height]
 
+    # Each list in x_list contains x location where a facet is passed-through
     x_list = [[] for _ in range(height)]
 
     for facet in facet_points:
+        # Depending on the z_height, 1 or 2 points of the triangle/facet are
+        # below the layer.
         above = []
         below = []
-        for vertex in [facet[0:3], facet[3:6],facet[6:9]]:
+        for vertex in [facet[0:3], facet[3:6], facet[6:9]]:
             if (vertex[2] <= z_height):
                 below.append(vertex)
             else:
                 above.append(vertex)
 
+        # Find the x and y components of the triangle/facet
         if (len(below) == 1):
             scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
             scale1 = (z_height - below[0][2]) / (above[1][2] - below[0][2])
@@ -270,6 +278,9 @@ def get_slice_image_data(scene, z_height, width, height):
             x1 = (above[0][0] - below[1][0]) * scale1 + below[1][0]
             y1 = (above[0][1] - below[1][1]) * scale1 + below[1][1]
 
+        # For each row that fits between the x0,y0 and x1,y1 points
+        # determine the x coordinate for that row and append it to a
+        # row list
         y_min = int(min(y0, y1))+1
         y_max = int(max(y0, y1))+1
         for row in range(y_min,y_max):
@@ -287,6 +298,8 @@ def get_slice_image_data(scene, z_height, width, height):
             #~ for idx in range(start, end):
                 #~ image[row][idx] = 1.0
 
+        # Draw lines between the pairs
+        # (start = odd passing, end = even passing)
         for start, end in x_pairs:
             image[row][start:end] = [1.0]*(end - start)
 
