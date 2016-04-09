@@ -248,6 +248,64 @@ def transform_scene(scene, scale, angle, translate):
 def get_slice_image_data(scene, z_height, width, height):
     image = np.array([[0.0]*width]*height)
 
+    # change matrix to [polygon][vertex][dimension]
+    new_facet_points = scene.points.reshape((-1,3,3))
+
+    # sort the matrix
+    new_facet_points = new_facet_points[np.arange(len(new_facet_points))[:,np.newaxis], np.argsort(new_facet_points[:, :, 2])]
+
+    # filter the matrix
+    new_facet_points = new_facet_points[new_facet_points[:,0,2] <= z_height]
+    new_facet_points = new_facet_points[new_facet_points[:,2,2] > z_height]
+
+    # split the matrix based on whether the base is above or
+    # below the z-height plane
+    base_above = new_facet_points[new_facet_points[:,1,2] <= z_height]
+    base_below = new_facet_points[new_facet_points[:,1,2] > z_height]
+
+    scale_below = (z_height - base_below[:,0,2]).reshape(-1,1) / (base_below[:,1:3,2] - base_below[:,0,2].reshape(-1,1))
+
+    scale_above = (z_height - base_above[:,0:2,2]) / (base_above[:,2,2].reshape(-1,1) - base_above[:,0:2,2])
+
+    # should be a [polygon][vertex][x,y]
+    above_coords = (base_above[:,2,0:2].reshape(-1,1,2) - base_above[:,0:2,0:2]) * scale_above.reshape(-1,2,1) + base_above[:,0:2,0:2]
+    below_coords = (base_below[:,1:3,0:2] - base_below[:,0,0:2].reshape(-1,1,2)) * scale_below.reshape(-1,2,1) + base_below[:,0,0:2].reshape(-1,1,2)
+
+    coords = np.concatenate((above_coords, below_coords), axis=0)
+
+    # sort the coords so smallest y is listed first in the vertex dimension
+    coords = coords[np.arange(len(coords))[:,np.newaxis], np.argsort(coords[:,:,1])]
+
+    #   The line between the coords pairs marks the transition points (outside
+    #   -> inside or inside -> outside). Find all the points on that line and
+    #   mark them
+
+    # Add fake origin to give transition_points a starting shape
+    transition_points = np.empty((1,2))
+
+    for coord_pair in coords:
+        row_list = np.arange(int(coord_pair[0][1])+1, int(coord_pair[1][1])+1, dtype='float')
+        col_list = ((row_list - coord_pair[0][1]) / (coord_pair[1][1] - coord_pair[0][1])) * (coord_pair[1][0] - coord_pair[0][0]) + coord_pair[0][0]
+        col_list = np.round(col_list).astype(int)
+        transition_points = np.vstack((transition_points, np.hstack((col_list.reshape(-1,1), row_list.reshape(-1,1)))))
+
+    # Remove fake point used to give transition_points a shape
+    transition_points = transition_points[1:]
+
+    # sort the coords by smallest y then smallest x
+    transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))]
+
+    for x0,y0,x1,y1 in transition_points.reshape(-1,4):
+        image[y0][x0:x1] = 1.0
+
+    return image
+
+
+    #~ import pdb; pdb.set_trace()
+
+
+
+
     # Remove facets that are too low in z
     facet_points = scene.points[scene.points[:,2:9:3].min(axis=1)<=z_height]
 
