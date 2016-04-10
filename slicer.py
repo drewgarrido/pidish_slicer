@@ -174,8 +174,9 @@ def save_image_data(image_data, filename):
     height = len(image_data)
     num_pixels = width * height
 
-    RGB_data = np.dot(image_data.reshape((num_pixels,1)),[[255,255,255]])
-    RGBA_data = np.concatenate((RGB_data, np.array([[255]]*num_pixels)), axis=1)
+    RGB_data = np.dot(image_data.reshape((num_pixels,1)),[[255,255,255]]).astype('uint8')
+    A_data = np.ones((num_pixels,1), dtype='uint8') * 255
+    RGBA_data = np.concatenate((RGB_data, A_data), axis=1)
 
     reshaped_data = np.uint8(RGBA_data.reshape((height,width,4)))
 
@@ -246,7 +247,7 @@ def transform_scene(scene, scale, angle, translate):
 ##
 ###############################################################################
 def get_slice_image_data(scene, z_height, width, height):
-    image = np.array([[0.0]*width]*height)
+    image = np.zeros((height, width))
 
     # change matrix to [polygon][vertex][dimension]
     new_facet_points = scene.points.reshape((-1,3,3))
@@ -280,95 +281,23 @@ def get_slice_image_data(scene, z_height, width, height):
     #   -> inside or inside -> outside). Find all the points on that line and
     #   mark them
 
-    # Add fake origin to give transition_points a starting shape
-    transition_points = np.empty((1,2))
+    x_trans = []
+    y_trans = []
 
     for coord_pair in coords:
         row_list = np.arange(int(coord_pair[0][1])+1, int(coord_pair[1][1])+1, dtype='float')
         col_list = ((row_list - coord_pair[0][1]) / (coord_pair[1][1] - coord_pair[0][1])) * (coord_pair[1][0] - coord_pair[0][0]) + coord_pair[0][0]
         col_list = np.round(col_list).astype(int)
-        transition_points = np.vstack((transition_points, np.hstack((col_list.reshape(-1,1), row_list.reshape(-1,1)))))
+        x_trans.append(col_list)
+        y_trans.append(row_list)
 
-    # Remove fake point used to give transition_points a shape
-    transition_points = transition_points[1:]
+    transition_points = np.hstack((np.hstack(x_trans).reshape(-1,1), np.hstack(y_trans).reshape(-1,1)))
 
     # sort the coords by smallest y then smallest x
     transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))]
 
     for x0,y0,x1,y1 in transition_points.reshape(-1,4):
         image[y0][x0:x1] = 1.0
-
-    return image
-
-
-    #~ import pdb; pdb.set_trace()
-
-
-
-
-    # Remove facets that are too low in z
-    facet_points = scene.points[scene.points[:,2:9:3].min(axis=1)<=z_height]
-
-    # Remove facets that are too high in z
-    facet_points = facet_points[facet_points[:,2:9:3].max(axis=1)>z_height]
-
-    # Each list in x_list contains x-locations where a facet is passed-through
-    x_list = [[] for _ in range(height)]
-
-    for facet in facet_points:
-        # Depending on the z_height, 1 or 2 points of the triangle/facet are
-        # below the layer.
-        above = []
-        below = []
-        for vertex in [facet[0:3], facet[3:6], facet[6:9]]:
-            if (vertex[2] <= z_height):
-                below.append(vertex)
-            else:
-                above.append(vertex)
-
-        # Find the x and y components of the triangle/facet edges
-        if (len(below) == 1):
-            scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
-            scale1 = (z_height - below[0][2]) / (above[1][2] - below[0][2])
-
-            x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
-            y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
-            x1 = (above[1][0] - below[0][0]) * scale1 + below[0][0]
-            y1 = (above[1][1] - below[0][1]) * scale1 + below[0][1]
-
-        else:
-            scale0 = (z_height - below[0][2]) / (above[0][2] - below[0][2])
-            scale1 = (z_height - below[1][2]) / (above[0][2] - below[1][2])
-
-            x0 = (above[0][0] - below[0][0]) * scale0 + below[0][0]
-            y0 = (above[0][1] - below[0][1]) * scale0 + below[0][1]
-            x1 = (above[0][0] - below[1][0]) * scale1 + below[1][0]
-            y1 = (above[0][1] - below[1][1]) * scale1 + below[1][1]
-
-        # For each row that fits between the x0,y0 and x1,y1 points
-        # determine the x coordinate for that row and append it to a
-        # row list
-        y_min = int(min(y0, y1))+1
-        y_max = int(max(y0, y1))+1
-        for row in range(y_min,y_max):
-            x = ((row - y0) / (y1 - y0)) * (x1 - x0) + x0
-            x_list[row].append(int(round(x)))
-
-
-
-    for row in range(height):
-        # Pair the list elements [(idx0, idx1), (idx2,idx3)...]
-        x_pairs = zip(*[iter(sorted(x_list[row]))]*2)
-
-        # Draw lines between the pairs
-        #~ for start, end in x_pairs:
-            #~ for idx in range(start, end):
-                #~ image[row][idx] = 1.0
-
-        # Draw lines between the pairs
-        # (start = odd passing, end = even passing)
-        for start, end in x_pairs:
-            image[row][start:end] = [1.0]*(end - start)
 
     return image
 
