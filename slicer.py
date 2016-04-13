@@ -170,14 +170,9 @@ def main():
 ###############################################################################
 def save_image_data(image_data, filename):
 
-    R_data = (image_data * 255)[...,None]
+    R_data = (image_data * 255)
 
-    A_data = np.empty((image_data.shape[0], image_data.shape[1], 1), dtype='uint8')
-    A_data.fill(255)
-
-    RGBA_data = np.concatenate((R_data, R_data, R_data, A_data), axis=2)
-
-    Image.fromarray(RGBA_data).save(filename)
+    Image.fromarray(R_data).convert('RGBA').save(filename)
 
 
 ###############################################################################
