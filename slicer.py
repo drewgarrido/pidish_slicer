@@ -26,7 +26,6 @@ from PIL import Image
 # numpy-stl library
 from stl import mesh
 
-@profile
 def main():
 
     parser = argparse.ArgumentParser(
@@ -169,7 +168,6 @@ def main():
 #   @param filename         Name of .png file
 ##
 ###############################################################################
-@profile
 def save_image_data(image_data, filename):
 
     R_data = (image_data * 255)[...,None]
@@ -196,7 +194,6 @@ def mirror_scene(scene, mirror):
                           [0,          0,           mirror[2]]])
 
     num_facets = len(scene.points)
-    print(num_facets)
     num_points = num_facets * 3
 
     tmp_scene = copy.copy(scene)
@@ -246,7 +243,6 @@ def transform_scene(scene, scale, angle, translate):
 #   @param height       image height
 ##
 ###############################################################################
-@profile
 def get_slice_image_data(scene, z_height, width, height):
     image = np.zeros((height, width), dtype='uint8')
 
@@ -291,7 +287,6 @@ def get_slice_image_data(scene, z_height, width, height):
     total_row_list = np.arange(height, dtype='float')
 
     for x0,y0,x1,y1 in coords:
-        #row_list = np.arange(int(coord_pair[0][1])+1, int(coord_pair[1][1])+1, dtype='float')
         row_list = total_row_list[int(y0)+1:int(y1)+1]
         col_list = (row_list - y0) * ((x1 - x0) / (y1 - y0)) + x0
         col_list = np.round(col_list).astype(int)
