@@ -127,7 +127,13 @@ def main():
 
         downscale = 4
 
-        bottom_image_data = get_slice_image_data(bottom_transform, 0.5, mask.width, mask.height)
+        # change scene to [polygon][vertex][dimension]
+        optimized_scene = bottom_transform.points.reshape((-1,3,3))
+
+        # sort the scene on z-axis per polygon
+        optimized_scene = optimized_scene[np.arange(len(optimized_scene))[:,np.newaxis], np.argsort(optimized_scene[:, :, 2])]
+
+        bottom_image_data = get_slice_image_data(optimized_scene, 0.5, mask.width, mask.height)
 
         # Crop the bottom image to the object size
         cropped_bottom = (bottom_image_data[:clip_y:downscale,:clip_x:downscale] == 1)
@@ -158,8 +164,14 @@ def main():
     print("Generating layers...")
     num_layers = int(round((z_max - z_min) * scale))
 
+    # change scene to [polygon][vertex][dimension]
+    optimized_scene = best_scene.points.reshape((-1,3,3))
+
+    # sort the scene on z-axis per polygon
+    optimized_scene = optimized_scene[np.arange(len(optimized_scene))[:,np.newaxis], np.argsort(optimized_scene[:, :, 2])]
+
     for layer_z in range(num_layers):
-        layer_image_data = get_slice_image_data(best_scene, layer_z + 0.5, mask.width, mask.height)
+        layer_image_data = get_slice_image_data(optimized_scene, layer_z + 0.5, mask.width, mask.height)
         save_image_data(layer_image_data, '{!s}/layer{:04d}.png'.format(args.output_dir, layer_z))
 
 
@@ -243,15 +255,10 @@ def transform_scene(scene, scale, angle, translate):
 #   @param height       image height
 ##
 ###############################################################################
-@profile
 def get_slice_image_data(scene, z_height, width, height):
     image = np.zeros((height, width), dtype='uint8')
 
-    # change matrix to [polygon][vertex][dimension]
-    new_facet_points = scene.points.reshape((-1,3,3))
-
-    # sort the matrix
-    new_facet_points = new_facet_points[np.arange(len(new_facet_points))[:,np.newaxis], np.argsort(new_facet_points[:, :, 2])]
+    new_facet_points = scene
 
     # filter the matrix
     new_facet_points = new_facet_points[new_facet_points[:,0,2] <= z_height]
@@ -283,20 +290,15 @@ def get_slice_image_data(scene, z_height, width, height):
     #   mark them
 
     x_trans = []
-    y_trans = []
 
     total_row_list = np.arange(1, height + 1, dtype='float')
 
     for x0,y0,x1,y1 in coords:
         row_list = total_row_list[int(y0):int(y1)]
         col_list = (row_list - y0) * ((x1 - x0) / (y1 - y0)) + x0
-        x_trans.append(col_list)
-        y_trans.append(row_list)
+        x_trans.append((col_list,row_list))
 
-    x_list = np.round(np.hstack(x_trans).reshape(-1,1))
-    y_list = np.hstack(y_trans).reshape(-1,1)
-
-    transition_points = np.hstack((x_list, y_list)).astype(int)
+    transition_points = np.round(np.hstack(x_trans)).T.astype(int)
 
     # sort the coords by first by ascending y then by ascending x.
     # Remove redundant y dimension, since these coordinates will have y-pairs
