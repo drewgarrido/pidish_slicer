@@ -285,18 +285,21 @@ def get_slice_image_data(scene, z_height, width, height):
     x_trans = []
     y_trans = []
 
-    total_row_list = np.arange(height, dtype='float')
+    total_row_list = np.arange(1, height + 1, dtype='float')
 
     for x0,y0,x1,y1 in coords:
-        row_list = total_row_list[int(y0)+1:int(y1)+1]
+        row_list = total_row_list[int(y0):int(y1)]
         col_list = (row_list - y0) * ((x1 - x0) / (y1 - y0)) + x0
-        col_list = np.round(col_list).astype(int)
         x_trans.append(col_list)
         y_trans.append(row_list)
 
-    transition_points = np.hstack((np.hstack(x_trans).reshape(-1,1), np.hstack(y_trans).reshape(-1,1))).astype(int)
+    x_list = np.round(np.hstack(x_trans).reshape(-1,1))
+    y_list = np.hstack(y_trans).reshape(-1,1)
 
-    # sort the coords by smallest y then smallest x
+    transition_points = np.hstack((x_list, y_list)).astype(int)
+
+    # sort the coords by first by ascending y then by ascending x.
+    # Remove redundant y dimension, since these coordinates will have y-pairs
     transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))].reshape(-1,4)[:,0:3]
 
     char_one = np.uint8(1)
