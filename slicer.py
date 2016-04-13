@@ -129,15 +129,20 @@ def main():
         bottom_image_data = get_slice_image_data(bottom_transform, 0.5, mask.width, mask.height)
 
         # Crop the bottom image to the object size
-        cropped_bottom = np.uint32(bottom_image_data[:clip_y,:clip_x].flatten())
+        #~ cropped_bottom = np.uint32(bottom_image_data[:clip_y,:clip_x].flatten())
+        cropped_bottom = (bottom_image_data[:clip_y,:clip_x].flatten() == 1)
 
         # Get the red channel of the mask as the gray value and normalize
         mask_pixels = np.uint32(np.array(mask)[:,:,0])
 
+        num_pixels = len(cropped_bottom)
 
         for x in range(0, mask.width - clip_x, 4):
+            mask_x_clip = mask_pixels[:, x:x+clip_x].flatten()
             for y in range(0, mask.height - clip_y, 4):
-                accum = mask_pixels[y:y+clip_y, x:x+clip_x].flatten().dot(cropped_bottom)
+                tmp_y = y*clip_x
+                #~ import pdb; pdb.set_trace()
+                accum = mask_x_clip[tmp_y:tmp_y+num_pixels][cropped_bottom].sum()
 
                 if (best_score < accum):
                     best_xy = (x,y)
