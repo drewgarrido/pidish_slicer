@@ -125,20 +125,25 @@ def main():
         clip_x = int(round((x_max - x_min) * scale))
         clip_y = int(round((y_max - y_min) * scale))
 
+        downscale = 4
+
         bottom_image_data = get_slice_image_data(bottom_transform, 0.5, mask.width, mask.height)
 
         # Crop the bottom image to the object size
-        cropped_bottom = (bottom_image_data[:clip_y,:clip_x] == 1)
+        cropped_bottom = (bottom_image_data[:clip_y:downscale,:clip_x:downscale] == 1)
 
         # Get the red channel of the mask as the gray value and normalize
-        mask_pixels = np.uint32(np.array(mask)[:,:,0])
+        mask_pixels = np.uint32(np.array(mask)[::downscale,::downscale,0])
 
-        for x in range(0, mask.width - clip_x, 4):
-            for y in range(0, mask.height - clip_y, 4):
-                accum = mask_pixels[y:y+clip_y,x:x+clip_x][cropped_bottom].sum()
+        cb_x = cropped_bottom.shape[1]
+        cb_y = cropped_bottom.shape[0]
+
+        for x in range(0, mask_pixels.shape[1] - cb_x):
+            for y in range(0, mask_pixels.shape[0] - cb_y):
+                accum = mask_pixels[y:y+cb_y,x:x+cb_x][cropped_bottom].sum()
 
                 if (best_score < accum):
-                    best_xy = (x,y)
+                    best_xy = (x*downscale,y*downscale)
                     best_score = accum
                     best_angle = angle
                     best_min_xy = (x_min, y_min)
