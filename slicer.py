@@ -243,6 +243,7 @@ def transform_scene(scene, scale, angle, translate):
 #   @param height       image height
 ##
 ###############################################################################
+@profile
 def get_slice_image_data(scene, z_height, width, height):
     image = np.zeros((height, width), dtype='uint8')
 
@@ -293,13 +294,13 @@ def get_slice_image_data(scene, z_height, width, height):
         x_trans.append(col_list)
         y_trans.append(row_list)
 
-    transition_points = np.hstack((np.hstack(x_trans).reshape(-1,1), np.hstack(y_trans).reshape(-1,1)))
+    transition_points = np.hstack((np.hstack(x_trans).reshape(-1,1), np.hstack(y_trans).reshape(-1,1))).astype(int)
 
     # sort the coords by smallest y then smallest x
-    transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))].reshape(-1,4)
+    transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))].reshape(-1,4)[:,0:3]
 
     char_one = np.uint8(1)
-    for x0,y0,x1,y1 in transition_points:
+    for x0,y0,x1 in transition_points:
         image[y0,x0:x1] = char_one
 
     return image
