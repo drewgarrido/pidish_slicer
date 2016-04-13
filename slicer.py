@@ -26,6 +26,7 @@ from PIL import Image
 # numpy-stl library
 from stl import mesh
 
+@profile
 def main():
 
     parser = argparse.ArgumentParser(
@@ -169,18 +170,17 @@ def main():
 #   @param filename         Name of .png file
 ##
 ###############################################################################
+@profile
 def save_image_data(image_data, filename):
-    width = len(image_data[0])
-    height = len(image_data)
-    num_pixels = width * height
 
-    RGB_data = np.dot(image_data.reshape((num_pixels,1)),[[255,255,255]]).astype('uint8')
-    A_data = np.ones((num_pixels,1), dtype='uint8') * 255
-    RGBA_data = np.concatenate((RGB_data, A_data), axis=1)
+    R_data = (image_data * 255)[...,None]
 
-    reshaped_data = np.uint8(RGBA_data.reshape((height,width,4)))
+    A_data = np.empty((image_data.shape[0], image_data.shape[1], 1), dtype='uint8')
+    A_data.fill(255)
 
-    Image.fromarray(reshaped_data).save(filename)
+    RGBA_data = np.concatenate((R_data, R_data, R_data, A_data), axis=2)
+
+    Image.fromarray(RGBA_data).save(filename)
 
 
 ###############################################################################
@@ -197,6 +197,7 @@ def mirror_scene(scene, mirror):
                           [0,          0,           mirror[2]]])
 
     num_facets = len(scene.points)
+    print(num_facets)
     num_points = num_facets * 3
 
     tmp_scene = copy.copy(scene)
@@ -246,8 +247,9 @@ def transform_scene(scene, scale, angle, translate):
 #   @param height       image height
 ##
 ###############################################################################
+@profile
 def get_slice_image_data(scene, z_height, width, height):
-    image = np.zeros((height, width))
+    image = np.zeros((height, width), dtype='uint8')
 
     # change matrix to [polygon][vertex][dimension]
     new_facet_points = scene.points.reshape((-1,3,3))
@@ -274,8 +276,11 @@ def get_slice_image_data(scene, z_height, width, height):
 
     coords = np.concatenate((above_coords, below_coords), axis=0)
 
+    # Filter out points where the y values don't have a difference
+    coords = coords[coords[:,0,1].astype(int) != coords[:,1,1].astype(int)]
+
     # sort the coords so smallest y is listed first in the vertex dimension
-    coords = coords[np.arange(len(coords))[:,np.newaxis], np.argsort(coords[:,:,1])]
+    coords = coords[np.arange(len(coords))[:,np.newaxis], np.argsort(coords[:,:,1])].reshape(-1,4)
 
     #   The line between the coords pairs marks the transition points (outside
     #   -> inside or inside -> outside). Find all the points on that line and
@@ -284,9 +289,12 @@ def get_slice_image_data(scene, z_height, width, height):
     x_trans = []
     y_trans = []
 
-    for coord_pair in coords:
-        row_list = np.arange(int(coord_pair[0][1])+1, int(coord_pair[1][1])+1, dtype='float')
-        col_list = ((row_list - coord_pair[0][1]) / (coord_pair[1][1] - coord_pair[0][1])) * (coord_pair[1][0] - coord_pair[0][0]) + coord_pair[0][0]
+    total_row_list = np.arange(height, dtype='float')
+
+    for x0,y0,x1,y1 in coords:
+        #row_list = np.arange(int(coord_pair[0][1])+1, int(coord_pair[1][1])+1, dtype='float')
+        row_list = total_row_list[int(y0)+1:int(y1)+1]
+        col_list = (row_list - y0) * ((x1 - x0) / (y1 - y0)) + x0
         col_list = np.round(col_list).astype(int)
         x_trans.append(col_list)
         y_trans.append(row_list)
@@ -294,10 +302,11 @@ def get_slice_image_data(scene, z_height, width, height):
     transition_points = np.hstack((np.hstack(x_trans).reshape(-1,1), np.hstack(y_trans).reshape(-1,1)))
 
     # sort the coords by smallest y then smallest x
-    transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))]
+    transition_points = transition_points[np.lexsort((transition_points[:,0], transition_points[:,1]))].reshape(-1,4)
 
-    for x0,y0,x1,y1 in transition_points.reshape(-1,4):
-        image[y0][x0:x1] = 1.0
+    char_one = np.uint8(1)
+    for x0,y0,x1,y1 in transition_points:
+        image[y0,x0:x1] = char_one
 
     return image
 
