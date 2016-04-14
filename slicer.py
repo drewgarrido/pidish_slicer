@@ -26,7 +26,14 @@ from PIL import Image
 # numpy-stl library
 from stl import mesh
 
+ENABLE_PROFILING = False
+
+if not ENABLE_PROFILING:
+    from multiprocessing import Pool
+
 def main():
+
+    start_time = time.time()
 
     parser = argparse.ArgumentParser(
         description='Python 3.5 script that slices an .stl file into .png \
@@ -170,10 +177,28 @@ def main():
     # sort the scene on z-axis per polygon
     optimized_scene = optimized_scene[np.arange(len(optimized_scene))[:,np.newaxis], np.argsort(optimized_scene[:, :, 2])]
 
+    pool_args = []
     for layer_z in range(num_layers):
-        layer_image_data = get_slice_image_data(optimized_scene, layer_z + 0.5, mask.width, mask.height)
-        save_image_data(layer_image_data, '{!s}/layer{:04d}.png'.format(args.output_dir, layer_z))
+        pool_args.append((optimized_scene, layer_z, mask.width, mask.height, args.output_dir))
 
+    if ENABLE_PROFILING:
+
+        for the_args in pool_args:
+            slice_layer(the_args)
+
+    else:
+        # Divide and conquer!
+        with Pool() as p:
+            p.map(slice_layer, pool_args)
+
+    end_time = time.time()
+    print("Total time taken: {:.2f} s".format(end_time - start_time))
+
+
+def slice_layer(args):
+    optimized_scene, layer_z, image_width, image_height, output_dir = args
+    layer_image_data = get_slice_image_data(optimized_scene, layer_z + 0.5, image_width, image_height)
+    save_image_data(layer_image_data, '{!s}/layer{:04d}.png'.format(output_dir, layer_z))
 
 ###############################################################################
 ##
