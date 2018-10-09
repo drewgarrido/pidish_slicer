@@ -37,19 +37,23 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='Python 3.5 script that slices an .stl file into .png \
-        images. Dependent on numpy, numpy-stl, and pillow')
+                     images. Dependent on numpy, numpy-stl, and pillow')
     parser.add_argument('-i', '--input-file', required=True,
         help='Input .stl file using mm units')
     parser.add_argument('-o', '--output-dir', default=None,
         help='If unspecified, the name of the input will be used as a new \
         directory')
-    parser.add_argument('-m', '--mask-file', default='mask.png',
-        help='Mask image of the lift platform with black as areas to avoid. Can \
-        be RGBA grayscale to specify preferred regions. The resolution of       \
-        the mask is used to determine the slice resolution. If                  \
-        unspecified, mask.png will be sought in the current working             \
-        directory.')
-
+    parser.add_argument('-m', '--mask-file', default=None,
+        help='Optional mask image of the lift platform with black as \
+        areas to avoid. Can be RGBA grayscale to specify preferred \
+        regions. The resolution of the mask is used to determine the \
+        slice resolution.')
+    parser.add_argument('-x', '--output-width', default=None,
+        help='Width in pixels of the output .pngs. If a mask is \
+        specified, this argument is optional.')
+    parser.add_argument('-y', '--output-height', default=None,
+        help='Height in pixels of the output .pngs. If a mask is \
+        specified, this argument is optional.')
     parser.add_argument('-s', '--scale', default='10',
         help='Pixels per unit in the .stl file. For instance, a value of 10 \
         will provide 0.1 mm resolution if the .stl file uses mm for units. \
@@ -65,8 +69,15 @@ def main():
         print(args.input_file + " does not exist!")
         return 0
 
-    if (not os.path.isfile(args.mask_file)):
-        print(args.mask_file + " does not exist!")
+    using_mask = args.mask_file is not None
+
+    if using_mask:
+        if (not os.path.isfile(args.mask_file)):
+            print(args.mask_file + " does not exist!")
+            return 0
+    elif (not args.output_width.isdigit()) or (not args.output_height.isdigit()):
+        print("Output width and height are required if a mask is not \
+specified! Please use positive integers.")
         return 0
 
     if (not re.match("^([0-9]+|[0-9]+\.[0-9]*)$", args.scale)):
@@ -90,11 +101,17 @@ def main():
         print("Unable to read the .stl file!")
         return 0
 
-    try:
-        mask = Image.open(args.mask_file)
-    except:
-        print("Unable to read the mask file!")
-        return 0
+    if using_mask:
+        try:
+            mask = Image.open(args.mask_file)
+            image_width = mask.width
+            image_height = mask.height
+        except:
+            print("Unable to read the mask file!")
+            return 0
+    else:
+        image_width = int(args.output_width)
+        image_height = int(args.output_height)
 
     ###########################################################################
     # Files successfully opened! Now the the 3d math can begin.
@@ -107,61 +124,74 @@ def main():
     # Scale the vertices to the actual pixels
     scale = float(args.scale)
 
-    print("Finding best location...")
+    if using_mask:
+        print("Finding best location...")
 
-    z_min = min(scene.points[:,2:9:3].flatten())
-    z_max = max(scene.points[:,2:9:3].flatten())
+        z_min = min(scene.points[:,2:9:3].flatten())
+        z_max = max(scene.points[:,2:9:3].flatten())
 
-    best_score = 0
-    best_xy = (0,0)
-    best_angle = 0.0
-    best_min_xy = (0,0)
+        best_score = 0
+        best_xy = (0,0)
+        best_angle = 0.0
+        best_min_xy = (0,0)
 
-    for angle in (0.0, math.radians(45)):
+        for angle in (0.0, math.radians(45)):
 
-        bottom_transform = transform_scene(scene, 1, angle, (0,0,0))
+            bottom_transform = transform_scene(scene, 1, angle, (0,0,0))
 
-        # Find the dimensions of the rotated scene
-        x_min = min(bottom_transform.points[:,0:9:3].flatten())
-        x_max = max(bottom_transform.points[:,0:9:3].flatten())
-        y_min = min(bottom_transform.points[:,1:9:3].flatten())
-        y_max = max(bottom_transform.points[:,1:9:3].flatten())
+            # Find the dimensions of the rotated scene
+            x_min = min(bottom_transform.points[:,0:9:3].flatten())
+            x_max = max(bottom_transform.points[:,0:9:3].flatten())
+            y_min = min(bottom_transform.points[:,1:9:3].flatten())
+            y_max = max(bottom_transform.points[:,1:9:3].flatten())
 
-        bottom_transform = transform_scene(bottom_transform, scale, 0, (-x_min*scale, -y_min*scale, -z_min*scale))
+            bottom_transform = transform_scene(bottom_transform, scale, 0, (-x_min*scale, -y_min*scale, -z_min*scale))
 
-        clip_x = int(round((x_max - x_min) * scale))
-        clip_y = int(round((y_max - y_min) * scale))
+            clip_x = int(round((x_max - x_min) * scale))
+            clip_y = int(round((y_max - y_min) * scale))
 
-        downscale = 4
+            downscale = 4
 
-        # change scene to [polygon][vertex][dimension]
-        optimized_scene = bottom_transform.points.reshape((-1,3,3))
+            # change scene to [polygon][vertex][dimension]
+            optimized_scene = bottom_transform.points.reshape((-1,3,3))
 
-        # sort the scene on z-axis per polygon
-        optimized_scene = optimized_scene[np.arange(len(optimized_scene))[:,np.newaxis], np.argsort(optimized_scene[:, :, 2])]
+            # sort the scene on z-axis per polygon
+            optimized_scene = optimized_scene[np.arange(len(optimized_scene))[:,np.newaxis], np.argsort(optimized_scene[:, :, 2])]
 
-        bottom_image_data = get_slice_image_data(optimized_scene, 0.5, mask.width, mask.height)
+            bottom_image_data = get_slice_image_data(optimized_scene, 0.5, image_width, image_height)
 
-        # Crop the bottom image to the object size
-        cropped_bottom = (bottom_image_data[:clip_y:downscale,:clip_x:downscale] == 1)
+            # Crop the bottom image to the object size
+            cropped_bottom = (bottom_image_data[:clip_y:downscale,:clip_x:downscale] == 1)
 
-        # Get the red channel of the mask as the gray value and normalize
-        mask_pixels = np.uint32(np.array(mask)[::downscale,::downscale,0])
+            # Get the red channel of the mask as the gray value and normalize
+            mask_pixels = np.uint32(np.array(mask)[::downscale,::downscale,0])
 
-        cb_x = cropped_bottom.shape[1]
-        cb_y = cropped_bottom.shape[0]
+            cb_x = cropped_bottom.shape[1]
+            cb_y = cropped_bottom.shape[0]
 
-        for x in range(0, mask_pixels.shape[1] - cb_x):
-            for y in range(0, mask_pixels.shape[0] - cb_y):
-                accum = mask_pixels[y:y+cb_y,x:x+cb_x][cropped_bottom].sum()
+            for x in range(0, mask_pixels.shape[1] - cb_x):
+                for y in range(0, mask_pixels.shape[0] - cb_y):
+                    accum = mask_pixels[y:y+cb_y,x:x+cb_x][cropped_bottom].sum()
 
-                if (best_score < accum):
-                    best_xy = (x*downscale,y*downscale)
-                    best_score = accum
-                    best_angle = angle
-                    best_min_xy = (x_min, y_min)
+                    if (best_score < accum):
+                        best_xy = (x*downscale,y*downscale)
+                        best_score = accum
+                        best_angle = angle
+                        best_min_xy = (x_min, y_min)
 
-    print(best_xy, math.degrees(best_angle), best_score)
+        print(best_xy, math.degrees(best_angle), best_score)
+
+    else:
+        # Find the dimensions of the scene
+        x_min = min(scene.points[:,0:9:3].flatten())
+        x_max = max(scene.points[:,0:9:3].flatten())
+        y_min = min(scene.points[:,1:9:3].flatten())
+        y_max = max(scene.points[:,1:9:3].flatten())
+        z_min = min(scene.points[:,2:9:3].flatten())
+        z_max = max(scene.points[:,2:9:3].flatten())
+        best_min_xy = (x_min, y_min)
+        best_xy = (image_width/2 - scale*(x_max - x_min)/2,image_height/2 -scale*(y_max - y_min)/2)
+        best_angle = 0
 
     print("Moving object to best position...")
 
@@ -179,7 +209,7 @@ def main():
 
     pool_args = []
     for layer_z in range(num_layers):
-        pool_args.append((optimized_scene, layer_z, mask.width, mask.height, args.output_dir))
+        pool_args.append((optimized_scene, layer_z, image_width, image_height, args.output_dir))
 
     if ENABLE_PROFILING:
 
@@ -233,7 +263,7 @@ def mirror_scene(scene, mirror):
     num_facets = len(scene.points)
     num_points = num_facets * 3
 
-    tmp_scene = copy.copy(scene)
+    tmp_scene = copy.deepcopy(scene)
 
     tmp_scene.points = np.dot(tmp_scene.points.reshape((num_points, 3)), transform.transpose()).reshape(num_facets, 9)
     tmp_scene.update_normals()
@@ -259,7 +289,7 @@ def transform_scene(scene, scale, angle, translate):
     num_facets = len(scene.points)
     num_points = num_facets * 3
 
-    tmp_scene = copy.copy(scene)
+    tmp_scene = copy.deepcopy(scene)
 
     tmp_scene.points = np.dot(np.concatenate((tmp_scene.points.reshape((num_points, 3)),np.ones((num_points,1))),axis=1), transform.transpose()).reshape(num_facets, 9)
     tmp_scene.update_normals()
